@@ -26,7 +26,7 @@
 
         // Set up scene, camera, and renderer
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 20000);
         const renderer = new THREE.WebGLRenderer();
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -59,7 +59,7 @@
         let idleTime = 0;
 
         // Add underwater fog with reduced density
-        scene.fog = new THREE.FogExp2(0x004c6d, 0.004); // Reduced fog density from 0.008 to 0.004
+        scene.fog = new THREE.FogExp2(0x004c6d, 0.002); // Reduced fog density from 0.004 to 0.002
         scene.background = new THREE.Color(0x87CEEB); // Light blue default sky
 
         // Create skybox
@@ -94,7 +94,7 @@
                 waterColor: 0x001e38,
                 distortionScale: 3.0,
                 fog: scene.fog !== undefined,
-                alpha: 0.8
+                alpha: 0.6 // Reduced from 0.8 to make water more transparent
             }
         );
         water.rotation.x = -Math.PI / 2;
@@ -287,6 +287,9 @@
         let currentBankAngle = 0;
         let swimAnimationTime = 0;
         let lastKeyState = {}; // Track previous key states
+        let isTurningAround = false; // New variable to track 180-degree turn
+        let turnAroundProgress = 0; // New variable to track turn progress
+        let initialTurnAngle = 0; // New variable to store initial angle when turn starts
 
         // Function to check if any movement keys are pressed
         function isAnyMovementKeyPressed() {
@@ -305,6 +308,13 @@
             if (!keys[event.key]) { // Only update if key wasn't already pressed
                 keys[event.key] = true;
                 lastKeyState[event.key] = true;
+                
+                // Initialize turn around when S is pressed and not already turning
+                if ((event.key === 's' || event.key === 'S') && !isTurningAround) {
+                    isTurningAround = true;
+                    turnAroundProgress = 0;
+                    initialTurnAngle = fish ? fish.rotation.y : 0;
+                }
             }
             // Start flip animation when F key is pressed
             if (event.key === 'f' || event.key === 'F') {
@@ -367,13 +377,13 @@
         for (let level = 0; level < lightLevels.length; level++) {
             const spacing = lightLevels[level].spacing;
             
-            // Create a 4x4 grid of lights at each depth
-            for (let x = -1.5; x <= 1.5; x++) {
-                for (let z = -1.5; z <= 1.5; z++) {
+            // Create a 5x5 grid of lights at each depth (increased from 4x4)
+            for (let x = -2; x <= 2; x++) {
+                for (let z = -2; z <= 2; z++) {
                     const light = new THREE.PointLight(
                         lightColors[level],
-                        lightLevels[level].intensity,
-                        lightLevels[level].range
+                        lightLevels[level].intensity * 1.5, // Increased intensity by 50%
+                        lightLevels[level].range * 1.5 // Increased range by 50%
                     );
                     
                     // Add some randomness to light positions for more natural look
@@ -414,8 +424,8 @@
 
         // Adjust fog density based on depth
         function updateFogDensity(depth) {
-            const minDensity = 0.002;
-            const maxDensity = 0.008;
+            const minDensity = 0.001; // Reduced from 0.002
+            const maxDensity = 0.004; // Reduced from 0.008
             const densityRange = maxDensity - minDensity;
             
             // Calculate density based on depth (less dense when closer to surface)
@@ -525,8 +535,34 @@
                 // WASD Movement - Updated to match fish's forward direction
                 if (keys['w'] || keys['W']) {
                     moveDirection.z += speed;  // Forward movement
-                } else if (keys['s'] || keys['S']) {
-                    moveDirection.z -= speed * 0.2;  // Backward movement
+                }
+                
+                // Handle 180-degree turn with S key
+                if (isTurningAround) {
+                    // Prevent other movement during turn
+                    moveDirection.set(0, 0, 0);
+                    isMoving = true;
+                    
+                    // Update turn progress
+                    turnAroundProgress += 0.03; // Adjust this value to change turn speed
+                    
+                    // Apply smooth turn animation
+                    if (fish) {
+                        const targetAngle = initialTurnAngle + Math.PI; // 180 degrees in radians
+                        fish.rotation.y = initialTurnAngle + (targetAngle - initialTurnAngle) * 
+                            (Math.sin(turnAroundProgress * Math.PI - Math.PI/2) * 0.5 + 0.5);
+                        
+                        // Add banking effect during turn
+                        targetRotationZ = Math.sin(turnAroundProgress * Math.PI) * 0.3;
+                        
+                        // Complete the turn
+                        if (turnAroundProgress >= 1) {
+                            isTurningAround = false;
+                            turnAroundProgress = 0;
+                            fish.rotation.y = targetAngle;
+                            targetRotationZ = 0;
+                        }
+                    }
                 }
 
                 // Rotation with A/D keys
